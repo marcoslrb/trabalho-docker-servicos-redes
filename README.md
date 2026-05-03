@@ -22,7 +22,7 @@ A aplicação é composta por 3 containers:
 |------|-----------|
 | Marcos Lopes Ribeiro | 20241si036 |
 | Rafael Zoppé Santos | 20241si021 |
-| Thaynara Zamparini Xavier | 20241si072 |
+| Thaynara Zamparini Xavier | 20241si025 |
 
 ## Tema
 
