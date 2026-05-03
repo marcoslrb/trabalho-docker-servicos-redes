@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Sistema de Catálogo de Produtos e Categorias - Grupo 2 - Serviços de Redes para Internet">
+    <title>Catálogo de Produtos e Categorias</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="header-content">
+            <div class="logo">
+                <span class="logo-icon">📦</span>
+                <h1>Catálogo de Produtos</h1>
+            </div>
+            <p class="header-subtitle">Grupo 2 &mdash; Serviços de Redes para Internet</p>
+        </div>
+    </header>
+
+    <!-- Navigation Tabs -->
+    <nav class="tabs" id="nav-tabs">
+        <button class="tab active" data-tab="produtos" id="tab-produtos">
+            <span class="tab-icon">🏷️</span> Produtos
+        </button>
+        <button class="tab" data-tab="categorias" id="tab-categorias">
+            <span class="tab-icon">📁</span> Categorias
+        </button>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="container">
+
+        <!-- ============ SEÇÃO DE PRODUTOS ============ -->
+        <section id="section-produtos" class="section active">
+            <div class="section-header">
+                <h2>Gerenciar Produtos</h2>
+                <button class="btn btn-primary" id="btn-novo-produto" onclick="abrirModalProduto()">
+                    <span>+</span> Novo Produto
+                </button>
+            </div>
+
+            <!-- Filtro por categoria -->
+            <div class="filter-bar">
+                <label for="filtro-categoria">Filtrar por categoria:</label>
+                <select id="filtro-categoria" onchange="carregarProdutos()">
+                    <option value="">Todas as categorias</option>
+                </select>
+            </div>
+
+            <!-- Tabela de produtos -->
+            <div class="table-wrapper">
+                <table id="tabela-produtos">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Nome</th>
+                            <th>Descrição</th>
+                            <th>Preço</th>
+                            <th>Estoque</th>
+                            <th>Categoria</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody-produtos">
+                        <tr>
+                            <td colspan="7" class="empty-state">
+                                <div class="empty-icon">📭</div>
+                                <p>Nenhum produto cadastrado</p>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- ============ SEÇÃO DE CATEGORIAS ============ -->
+        <section id="section-categorias" class="section">
+            <div class="section-header">
+                <h2>Gerenciar Categorias</h2>
+                <button class="btn btn-primary" id="btn-nova-categoria" onclick="abrirModalCategoria()">
+                    <span>+</span> Nova Categoria
+                </button>
+            </div>
+
+            <div class="table-wrapper">
+                <table id="tabela-categorias">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Nome</th>
+                            <th>Descrição</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody-categorias">
+                        <tr>
+                            <td colspan="4" class="empty-state">
+                                <div class="empty-icon">📭</div>
+                                <p>Nenhuma categoria cadastrada</p>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <!-- ============ MODAL DE PRODUTO ============ -->
+    <div class="modal-overlay" id="modal-produto">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="modal-produto-titulo">Novo Produto</h3>
+                <button class="modal-close" onclick="fecharModal('modal-produto')">&times;</button>
+            </div>
+            <form id="form-produto" onsubmit="salvarProduto(event)">
+                <input type="hidden" id="produto-id">
+                <div class="form-group">
+                    <label for="produto-nome">Nome *</label>
+                    <input type="text" id="produto-nome" required placeholder="Nome do produto" maxlength="200">
+                </div>
+                <div class="form-group">
+                    <label for="produto-descricao">Descrição</label>
+                    <textarea id="produto-descricao" placeholder="Descrição do produto" rows="3"></textarea>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="produto-preco">Preço (R$) *</label>
+                        <input type="number" id="produto-preco" required step="0.01" min="0.01" placeholder="0,00">
+                    </div>
+                    <div class="form-group">
+                        <label for="produto-estoque">Estoque *</label>
+                        <input type="number" id="produto-estoque" required min="0" value="0" placeholder="0">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="produto-categoria">Categoria *</label>
+                    <select id="produto-categoria" required>
+                        <option value="">Selecione uma categoria</option>
+                    </select>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-secondary" onclick="fecharModal('modal-produto')">Cancelar</button>
+                    <button type="submit" class="btn btn-primary" id="btn-salvar-produto">Salvar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ============ MODAL DE CATEGORIA ============ -->
+    <div class="modal-overlay" id="modal-categoria">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="modal-categoria-titulo">Nova Categoria</h3>
+                <button class="modal-close" onclick="fecharModal('modal-categoria')">&times;</button>
+            </div>
+            <form id="form-categoria" onsubmit="salvarCategoria(event)">
+                <input type="hidden" id="categoria-id">
+                <div class="form-group">
+                    <label for="categoria-nome">Nome *</label>
+                    <input type="text" id="categoria-nome" required placeholder="Nome da categoria" maxlength="100">
+                </div>
+                <div class="form-group">
+                    <label for="categoria-descricao">Descrição</label>
+                    <textarea id="categoria-descricao" placeholder="Descrição da categoria" rows="3"></textarea>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-secondary" onclick="fecharModal('modal-categoria')">Cancelar</button>
+                    <button type="submit" class="btn btn-primary" id="btn-salvar-categoria">Salvar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ============ MODAL DE CONFIRMAÇÃO ============ -->
+    <div class="modal-overlay" id="modal-confirmar">
+        <div class="modal modal-sm">
+            <div class="modal-header">
+                <h3>Confirmar Exclusão</h3>
+                <button class="modal-close" onclick="fecharModal('modal-confirmar')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p id="confirmar-mensagem">Tem certeza que deseja excluir este item?</p>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="fecharModal('modal-confirmar')">Cancelar</button>
+                <button class="btn btn-danger" id="btn-confirmar-excluir">Excluir</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast de Notificação -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <footer class="footer">
+        <p>Catálogo de Produtos &copy; 2025 &mdash; Grupo 2 &mdash; Serviços de Redes para Internet</p>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html>
