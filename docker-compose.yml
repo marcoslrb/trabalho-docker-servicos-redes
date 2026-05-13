@@ -1,91 +1,227 @@
-# Definição de âncora para evitar repetição das variáveis de ambiente do PostgreSQL
-x-postgres-common: &postgres-common
-  POSTGRES_USER: ${POSTGRES_USER}
-  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-  POSTGRES_DB: ${POSTGRES_DB}
-
 services:
-  # ============================================
-  # Banco de Dados PostgreSQL
-  # ============================================
+  # --------------------------------------------
+  # Serviço 1: PostgreSQL
+  # --------------------------------------------
   postgres:
+    # Usa a imagem oficial do PostgreSQL, versão 17.
+    # Se trocar a versão, o comportamento geral continua,
+    # mas pode mudar compatibilidade, tamanho da imagem
+    # ou detalhes internos de inicialização.
     image: postgres:17
+
+    # Define um nome fixo para o container.
+    # Isso facilita visualizar no "docker ps".
+    # Se remover, o Docker Compose cria um nome automático.
+    # O projeto continua funcionando normalmente.
     container_name: database
+
+    # Faz o container reiniciar sozinho se cair ou se a máquina reiniciar,
+    # exceto se ele tiver sido parado manualmente.
+    # Se remover isso, o banco não volta sozinho após falha/reboot.
     restart: unless-stopped
+
     environment:
-      <<: *postgres-common # Usando a âncora definida acima
+      # Usuário do banco.
+      # O backend precisa usar o mesmo valor para autenticar.
+      # Se mudar aqui e não mudar no backend/.env, a conexão quebra.
+      POSTGRES_USER: ${POSTGRES_USER}
+
+      # Senha do banco.
+      # Se mudar aqui e esquecer de alinhar com o backend,
+      # o FastAPI não consegue autenticar no PostgreSQL.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+
+      # Nome do banco que será criado/inicializado.
+      # Se mudar, o backend precisa apontar para o novo nome.
+      POSTGRES_DB: ${POSTGRES_DB}
+
     volumes:
+      # Volume nomeado para persistir os dados do PostgreSQL.
+      # Isso evita perder tudo quando o container for recriado.
+      # Se remover, os dados ficam efêmeros e podem ser perdidos
+      # ao derrubar/recriar os containers.
       - pgdata:/var/lib/postgresql/data
+
     networks:
+      # Coloca o serviço na rede interna da aplicação.
+      # Isso permite que o backend se conecte ao banco pelo nome do serviço.
+      # Se remover daqui ou da definição da rede, os containers podem
+      # deixar de se enxergar corretamente.
       - netatividade01
+
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      # Verifica se o banco está pronto para aceitar conexões.
+      # O "service_healthy" do FastAPI depende disso.
+      # Sem isso, o backend pode subir cedo demais e falhar na conexão inicial.
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}" ]
+
+      # Intervalo entre os testes de saúde.
+      # Se aumentar, a detecção de pronto demora mais.
+      # Se diminuir demais, você testa com mais frequência que o necessário.
       interval: 5s
+
+      # Tempo máximo de espera por teste.
+      # Se muito baixo, o healthcheck pode falhar por demora momentânea.
       timeout: 5s
+
+      # Quantidade de tentativas antes de marcar como unhealthy.
+      # Se aumentar, o sistema tolera mais demora na subida do banco.
       retries: 5
 
-  # ============================================
-  # Backend FastAPI
-  # ============================================
+  # --------------------------------------------
+  # Serviço 2: Backend FastAPI
+  # --------------------------------------------
   fastapi:
     build:
+      # Diz que a imagem do backend será construída a partir da pasta ./backend.
+      # Se trocar esse caminho errado, o Docker não acha o código.
       context: ./backend
+
+      # Define qual Dockerfile usar dentro do contexto acima.
+      # Se renomear ou mover o arquivo, precisa ajustar aqui.
       dockerfile: Dockerfile
+
+    # Nome fixo do container.
+    # Se remover, o Compose gera um nome automático.
     container_name: fastapi
+
+    # Reinicia automaticamente em caso de falha ou reboot da máquina.
     restart: unless-stopped
+
     environment:
-      <<: *postgres-common # Usando a âncora para os dados de autenticação
+      # Credenciais e dados do banco usados pela aplicação FastAPI.
+      # Todos precisam bater com o que foi definido no serviço postgres.
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+
+      # Host do banco.
+      # No Compose, o ideal é usar o nome do serviço "postgres"
+      # porque a rede interna do Docker resolve esse nome via DNS.
+      # Se colocar localhost aqui, vai dar erro, porque "localhost"
+      # dentro do container aponta para ele mesmo, não para o banco.
       POSTGRES_HOST: ${POSTGRES_HOST}
+
+      # Porta interna do PostgreSQL.
+      # Normalmente 5432.
+      # Se mudar aqui, o Postgres precisaria realmente estar ouvindo nessa nova porta.
       POSTGRES_PORT: ${POSTGRES_PORT}
+
     depends_on:
       postgres:
+        # Garante que o backend só tente iniciar
+        # depois que o banco estiver marcado como healthy.
+        # Se trocar para apenas:
+        #   depends_on:
+        #     - postgres
+        # o Compose só respeita a ordem de início,
+        # mas não espera o banco estar pronto de verdade.
         condition: service_healthy
+
     networks:
+      # Coloca o backend na mesma rede interna do postgres e do nginx.
+      # Assim o nginx consegue acessar "fastapi:8080"
+      # e o backend consegue acessar "postgres:5432".
       - netatividade01
 
-  # ============================================
-  # Servidor NGINX (Proxy Reverso + Frontend)
-  # ============================================
+  # --------------------------------------------
+  # Serviço 3: NGINX
+  # --------------------------------------------
   nginx:
-    # Mudança: Usando imagem direta em vez de Dockerfile customizado
+    # Aqui foi usada a imagem oficial pronta do NGINX,
+    # sem Dockerfile próprio.
+    # Isso simplifica o projeto.
+    # Se quiser mais controle/robustez, um Dockerfile customizado
+    # ainda é a opção mais estável.
     image: nginx:alpine
+
+    # Nome fixo do container.
     container_name: nginx
+
+    # Reinício automático em caso de falha/reboot.
     restart: unless-stopped
+
     ports:
+      # Expõe a porta 80 do host para a 8080 do container.
+      # Isso combina com o nginx.conf de vocês, que faz listen em 8080.
+      # Se trocar para "80:80", só funciona se o nginx.conf também ouvir na 80.
       - "80:8080"
+
+      # Expõe a porta 443 do host para a 8443 do container.
+      # Isso combina com o bloco HTTPS do nginx.conf.
+      # Se trocar para "443:443", precisa mudar o nginx.conf também.
       - "443:8443"
-    # Mudança: Montando volumes para configuração e arquivos estáticos
+
     volumes:
+      # Monta o arquivo de configuração local dentro do container.
+      # O ":ro" significa read-only, ou seja, somente leitura.
+      # Isso protege o arquivo para o container não alterá-lo.
+      # Se remover esse volume, o NGINX usa a config padrão da imagem,
+      # e o proxy reverso para /api provavelmente deixa de funcionar.
       - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+
+      # Monta o frontend estático local dentro da pasta servida pelo NGINX.
+      # Também está em modo somente leitura.
+      # Se remover, a raiz do site pode ficar vazia ou servir a página padrão do NGINX.
       - ./nginx/html:/usr/share/nginx/html:ro
-    # Mudança: Gerando certificado SSL autoassinado inline via comando de inicialização
-    # 1. Instala openssl via apk
-    # 2. Cria o diretório para os certificados
-    # 3. Gera o par de chaves/certificado
-    # 4. Inicia o nginx em primeiro plano
+
     command: >
       sh -c "apk add --no-cache openssl &&
              mkdir -p /etc/nginx/ssl &&
-             openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-               -keyout /etc/nginx/ssl/nginx.key \
-               -out /etc/nginx/ssl/nginx.crt \
-               -subj '/C=BR/ST=Estado/L=Cidade/O=Grupo2/CN=localhost' &&
+             openssl req -x509 -nodes -days 365 -newkey rsa:2048
+             -keyout /etc/nginx/ssl/nginx.key
+             -out /etc/nginx/ssl/nginx.crt
+             -subj '/C=BR/ST=Estado/L=Cidade/O=Grupo2/CN=localhost' &&
              nginx -g 'daemon off;'"
+
+    # Explicação do command:
+    # 1. instala o openssl dentro do container
+    # 2. cria a pasta dos certificados
+    # 3. gera certificado autoassinado
+    # 4. inicia o nginx em foreground
+    #
+    # Se remover esse command:
+    # - o nginx sobe mais limpo,
+    # - mas o HTTPS quebra, porque o certificado não será criado.
+    #
+    # Se trocar o subject (-subj), muda apenas a identificação do certificado.
+    # Se mudar o caminho dos arquivos .key/.crt, precisa ajustar o nginx.conf.
+    #
+    # Ponto de atenção:
+    # essa solução é prática, mas menos robusta do que usar um Dockerfile próprio,
+    # porque instala dependência em tempo de execução toda vez que sobe o container.
+
     depends_on:
+      # Garante ordem de inicialização:
+      # nginx sobe depois do fastapi ser iniciado.
+      # Isso não verifica "saúde" do FastAPI, apenas a ordem de start.
+      # Em muitos casos isso basta.
       - fastapi
+
     networks:
+      # Coloca o NGINX na mesma rede dos outros serviços.
+      # Sem isso, ele não consegue alcançar o backend pelo nome "fastapi".
       - netatividade01
 
-# ============================================
-# Rede customizada da aplicação
-# ============================================
+# --------------------------------------------
+# Rede interna da aplicação
+# --------------------------------------------
 networks:
   netatividade01:
+    # Rede bridge personalizada.
+    # Permite comunicação entre os containers da stack.
+    # O Compose registra os serviços em DNS interno pelo nome.
+    # Se remover essa rede explícita, o Compose cria uma rede default
+    # e provavelmente ainda funciona; porém, o enunciado pede rede própria.
     driver: bridge
 
-# ============================================
-# Volumes para persistência dos dados do PostgreSQL
-# ============================================
+# --------------------------------------------
+# Volume persistente do PostgreSQL
+# --------------------------------------------
 volumes:
   pgdata:
+    # Volume gerenciado pelo Docker.
+    # É onde os dados do banco ficam guardados entre recriações.
+    # Se apagar esse volume com "docker compose down -v",
+    # os dados do banco serão perdidos.
     driver: local
