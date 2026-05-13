@@ -1,3 +1,9 @@
+# Definição de âncora para evitar repetição das variáveis de ambiente do PostgreSQL
+x-postgres-common: &postgres-common
+  POSTGRES_USER: ${POSTGRES_USER}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+  POSTGRES_DB: ${POSTGRES_DB}
+
 services:
   # ============================================
   # Banco de Dados PostgreSQL
@@ -7,9 +13,7 @@ services:
     container_name: database
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
+      <<: *postgres-common # Usando a âncora definida acima
     volumes:
       - pgdata:/var/lib/postgresql/data
     networks:
@@ -30,9 +34,7 @@ services:
     container_name: fastapi
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
+      <<: *postgres-common # Usando a âncora para os dados de autenticação
       POSTGRES_HOST: ${POSTGRES_HOST}
       POSTGRES_PORT: ${POSTGRES_PORT}
     depends_on:
@@ -45,15 +47,30 @@ services:
   # Servidor NGINX (Proxy Reverso + Frontend)
   # ============================================
   nginx:
-    build:
-      context: ./nginx
-      dockerfile: Dockerfile
+    # Mudança: Usando imagem direta em vez de Dockerfile customizado
+    image: nginx:alpine
     container_name: nginx
     restart: unless-stopped
     ports:
       - "80:8080"
       - "443:8443"
-      # O NGINX expõe as portas 80 e 443 para a rede externa, mapeando-as para as portas internas 8080 e 8443, respectivamente.
+    # Mudança: Montando volumes para configuração e arquivos estáticos
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/html:/usr/share/nginx/html:ro
+    # Mudança: Gerando certificado SSL autoassinado inline via comando de inicialização
+    # 1. Instala openssl via apk
+    # 2. Cria o diretório para os certificados
+    # 3. Gera o par de chaves/certificado
+    # 4. Inicia o nginx em primeiro plano
+    command: >
+      sh -c "apk add --no-cache openssl &&
+             mkdir -p /etc/nginx/ssl &&
+             openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+               -keyout /etc/nginx/ssl/nginx.key \
+               -out /etc/nginx/ssl/nginx.crt \
+               -subj '/C=BR/ST=Estado/L=Cidade/O=Grupo2/CN=localhost' &&
+             nginx -g 'daemon off;'"
     depends_on:
       - fastapi
     networks:
@@ -65,12 +82,9 @@ services:
 networks:
   netatividade01:
     driver: bridge
-    # Modo bridge significa que os containers se comunicam entre si usando o nome do serviço como hostname 
-    # e o Docker gerencia o roteamento interno. Isso é ideal para a maioria dos casos de uso, onde os containers
-    # precisam se comunicar entre si, mas não precisam ser expostos diretamente à rede externa.
 
 # ============================================
-# Volumes para persistência dos dados do PostgreSQL (o banco)
+# Volumes para persistência dos dados do PostgreSQL
 # ============================================
 volumes:
   pgdata:
