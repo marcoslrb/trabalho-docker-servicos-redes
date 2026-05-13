@@ -165,14 +165,7 @@ services:
       # Se remover, a raiz do site pode ficar vazia ou servir a página padrão do NGINX.
       - ./nginx/html:/usr/share/nginx/html:ro
 
-    command: >
-      sh -c "apk add --no-cache openssl &&
-             mkdir -p /etc/nginx/ssl &&
-             openssl req -x509 -nodes -days 365 -newkey rsa:2048
-             -keyout /etc/nginx/ssl/nginx.key
-             -out /etc/nginx/ssl/nginx.crt
-             -subj '/C=BR/ST=Estado/L=Cidade/O=Grupo2/CN=localhost' &&
-             nginx -g 'daemon off;'"
+    command: sh -c "apk add --no-cache openssl && mkdir -p /etc/nginx/ssl && openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout /etc/nginx/ssl/nginx.key -out /etc/nginx/ssl/nginx.crt -subj '/C=BR/ST=ES/L=Cachoeiro de Itapemirim/O=Serviços de Redes para Internet/OU=IFES - Campus Cachoeiro de Itapemirim/CN=localhost' && nginx -g 'daemon off;'"
 
     # Explicação do command:
     # 1. instala o openssl dentro do container
