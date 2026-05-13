@@ -3,7 +3,6 @@
 **Grupo 2** — Serviços de Redes para Internet
 Professor: Rafael Silva Guimarães
 
-
 ## Descrição
 
 Sistema web para gerenciamento de um catálogo de **Produtos** e **Categorias**, implementado com uma arquitetura de microserviços orquestrada por Docker Compose.
@@ -14,7 +13,7 @@ A aplicação é composta por 3 containers:
 |---------|------------|-----------|
 | **nginx** | NGINX Alpine | Proxy reverso + frontend estático |
 | **fastapi** | Python 3.11 + FastAPI | API REST com CRUD completo |
-| **postgres** | PostgreSQL 16 Alpine | Banco de dados relacional |
+| **postgres** | PostgreSQL 17 | Banco de dados relacional |
 
 ## Integrantes
 
@@ -74,10 +73,10 @@ docker compose up --build
 
 | URL | Descrição |
 |-----|-----------|
-| http://localhost | Frontend (interface web) |
-| https://localhost | Frontend via HTTPS (certificado autoassinado) |
-| http://localhost/api/docs | Documentação interativa da API (Swagger) |
-| http://localhost/api/redoc | Documentação alternativa da API (ReDoc) |
+| <http://localhost> | Frontend (interface web) |
+| <https://localhost> | Frontend via HTTPS (certificado autoassinado) |
+| <http://localhost/api/docs> | Documentação interativa da API (Swagger) |
+| <http://localhost/api/redoc> | Documentação alternativa da API (ReDoc) |
 
 ### Parar a aplicação
 
