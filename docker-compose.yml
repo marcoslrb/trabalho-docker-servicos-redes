@@ -20,6 +20,9 @@ services:
     # Se remover isso, o banco não volta sozinho após falha/reboot.
     restart: unless-stopped
 
+    ports:
+      - 5432:5432
+
     environment:
       # Usuário do banco.
       # O backend precisa usar o mesmo valor para autenticar.
@@ -77,9 +80,12 @@ services:
       # Se trocar esse caminho errado, o Docker não acha o código.
       context: ./backend
 
-      # Define qual Dockerfile usar dentro do contexto acima.
-      # Se renomear ou mover o arquivo, precisa ajustar aqui.
-      dockerfile: Dockerfile
+    volumes:
+      # Monta o código fonte local dentro do container.
+      # Isso permite desenvolvimento mais ágil, sem rebuildar a imagem a cada mudança.
+      # Se remover, o container usa apenas o que foi copiado na imagem,
+      # e mudanças locais não refletem até rebuildar a imagem.
+      - ./backend:/app
 
     # Nome fixo do container.
     # Se remover, o Compose gera um nome automático.
@@ -145,12 +151,12 @@ services:
       # Expõe a porta 80 do host para a 8080 do container.
       # Isso combina com o nginx.conf de vocês, que faz listen em 8080.
       # Se trocar para "80:80", só funciona se o nginx.conf também ouvir na 80.
-      - "80:8080"
+      - "80:80"
 
       # Expõe a porta 443 do host para a 8443 do container.
       # Isso combina com o bloco HTTPS do nginx.conf.
       # Se trocar para "443:443", precisa mudar o nginx.conf também.
-      - "443:8443"
+      - "443:443"
 
     volumes:
       # Monta o arquivo de configuração local dentro do container.
@@ -217,4 +223,8 @@ volumes:
     # É onde os dados do banco ficam guardados entre recriações.
     # Se apagar esse volume com "docker compose down -v",
     # os dados do banco serão perdidos.
+    driver: local
+  fastapi_data:
+    # Volume para persistir dados do backend, se necessário.
+    # Atualmente não é usado, mas pode ser útil para logs ou uploads.
     driver: local

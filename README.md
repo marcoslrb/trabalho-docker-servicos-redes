@@ -174,7 +174,6 @@ trabalho-docker-servicos-redes/
 │           ├── categorias.py   # Rotas CRUD de categorias
 │           └── produtos.py     # Rotas CRUD de produtos
 └── nginx/
-    ├── Dockerfile              # Imagem do NGINX
     ├── nginx.conf              # Configuração do proxy reverso
     └── html/
         ├── index.html          # Frontend - estrutura HTML
