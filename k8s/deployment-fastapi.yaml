@@ -23,8 +23,8 @@ spec:
           # IMPORTANTE: Altere para o nome da sua imagem no Docker Hub
           # ou use o registry local do K3s.
           # Exemplo: docker.io/seuusuario/catalogo-backend:latest
-          image: catalogo-backend:latest
-          imagePullPolicy: IfNotPresent
+          image: docker.io/marcosrb/catalogo-backend:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 8080
           env:
