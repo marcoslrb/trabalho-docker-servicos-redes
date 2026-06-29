@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx
+  namespace: catalogo
+  labels:
+    app: nginx
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      # Fixar na VM2 (camada de aplicação)
+      nodeSelector:
+        tier: app
+      # initContainer para gerar o certificado SSL autoassinado
+      initContainers:
+        - name: ssl-generator
+          image: alpine/openssl:latest
+          command:
+            - sh
+            - -c
+            - |
+              openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+                -keyout /ssl/nginx.key \
+                -out /ssl/nginx.crt \
+                -subj '/C=BR/ST=ES/L=Cachoeiro de Itapemirim/O=Servicos de Redes para Internet/OU=IFES - Campus Cachoeiro de Itapemirim/CN=localhost'
+          volumeMounts:
+            - name: ssl-certs
+              mountPath: /ssl
+      containers:
+        - name: nginx
+          image: nginx:alpine
+          ports:
+            - containerPort: 80
+            - containerPort: 443
+          volumeMounts:
+            - name: nginx-config
+              mountPath: /etc/nginx/conf.d
+            - name: nginx-html
+              mountPath: /usr/share/nginx/html
+            - name: ssl-certs
+              mountPath: /etc/nginx/ssl
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 10
+      volumes:
+        - name: nginx-config
+          configMap:
+            name: nginx-config
+        - name: nginx-html
+          configMap:
+            name: nginx-html
+        - name: ssl-certs
+          emptyDir: {}
