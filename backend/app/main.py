@@ -2,18 +2,27 @@
 Aplicação principal FastAPI - Catálogo de Produtos e Categorias.
 Grupo 2 - Serviços de Redes para Internet.
 """
+import time
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from .database import engine, Base
 from .routes import categorias_router, produtos_router
+from .logger import log_startup, log_request, log_db_error
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Cria as tabelas no banco de dados ao iniciar a aplicação."""
-    Base.metadata.create_all(bind=engine)
+    try:
+        Base.metadata.create_all(bind=engine)
+    except Exception as e:
+        log_db_error(str(e))
+        raise
+
+    # Log de inicialização da aplicação (obrigatório pelo enunciado).
+    log_startup()
     yield
 
 
@@ -33,6 +42,25 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def log_requests_middleware(request: Request, call_next):
+    """
+    Middleware que registra cada requisição recebida no Loki.
+    Loga: método HTTP, rota e código de resposta.
+    """
+    response = await call_next(request)
+
+    # Logar a requisição (obrigatório pelo enunciado).
+    log_request(
+        method=request.method,
+        path=request.url.path,
+        status_code=response.status_code,
+    )
+
+    return response
+
 
 # Registrar rotas
 app.include_router(categorias_router)
