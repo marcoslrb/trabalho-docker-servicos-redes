@@ -1,19 +1,11 @@
-# Catálogo de Produtos e Categorias
+# Catálogo de Produtos e Categorias — K3s Cluster
 
 **Grupo 2** — Serviços de Redes para Internet
 Professor: Rafael Silva Guimarães
 
 ## Descrição
 
-Sistema web para gerenciamento de um catálogo de **Produtos** e **Categorias**, implementado com uma arquitetura de microserviços orquestrada por Docker Compose.
-
-A aplicação é composta por 3 containers:
-
-| Serviço | Tecnologia | Descrição |
-|---------|------------|-----------|
-| **nginx** | NGINX Alpine | Proxy reverso + frontend estático |
-| **fastapi** | Python 3.11 + FastAPI | API REST com CRUD completo |
-| **postgres** | PostgreSQL 17 | Banco de dados relacional |
+Sistema web para gerenciamento de um catálogo de **Produtos** e **Categorias**, portado do Docker Compose para um cluster **K3s** (Kubernetes leve) com 2 VMs, separação de camadas (dados × aplicação) e coleta centralizada de logs com **Grafana Loki**.
 
 ## Integrantes
 
@@ -23,71 +15,308 @@ A aplicação é composta por 3 containers:
 | Rafael Zoppé Santos | 20241si021 |
 | Thaynara Zamparini Xavier | 20241si025 |
 
-## Tema
+## Orquestrador
 
-**Grupo 2** — Catálogo de Produtos e Categorias
+**K3s** — distribuição leve de Kubernetes (Apache 2.0, Rancher/SUSE). Ideal para ambientes com recursos limitados, edge computing e laboratório.
 
-### Entidades
+## Entidades
 
 - **Categoria**: id, nome, descricao, criado_em
 - **Produto**: id, nome, descricao, preco, estoque, categoria_id, criado_em, atualizado_em
 
-## Arquitetura
+## Topologia do Cluster
 
 ```
-                    ┌─────────────────────┐
-                    │      INTERNET       │
-                    └────────┬────────────┘
-                             │
-                      ┌──────┴──────┐
-                      │    NGINX    │  Portas 80/443
-                      │  (frontend  │
-                      │  + proxy)   │
-                      └──────┬──────┘
-                             │ /api → proxy_pass
-                      ┌──────┴──────┐
-                      │   FastAPI   │  Porta 8080
-                      │  (backend)  │
-                      └──────┬──────┘
-                             │
-                      ┌──────┴──────┐
-                      │ PostgreSQL  │  Porta 5432
-                      │   (banco)   │
-                      └─────────────┘
+┌──────────────────────────────────┐      ┌──────────────────────────────────┐
+│       VM1  —  Camada de Dados    │      │    VM2  —  Camada de Aplicação   │
+│       Papel: Agent (worker)      │      │    Papel: Server (control plane) │
+│                                  │      │                                  │
+│   ┌────────────┐  ┌───────────┐  │      │  ┌─────────┐   ┌─────────────┐  │
+│   │ PostgreSQL │  │   Loki    │  │      │  │  NGINX  │   │   FastAPI   │  │
+│   │  porta     │  │  porta    │  │      │  │  porta  │   │  porta 8080 │  │
+│   │  5432      │  │  3100     │  │      │  │ 80/443  │   │  (interno)  │  │
+│   │ (1 réplica)│  │(1 réplica)│  │      │  │(2 répl.)│   │ (2 répl.)   │  │
+│   └────────────┘  └───────────┘  │      │  └─────────┘   └─────────────┘  │
+│                                  │      │                                  │
+│   (sem portas expostas ao host)  │      │   (NGINX exposto via NodePort)   │
+│   Label: tier=data               │      │   Label: tier=app                │
+└──────────────┬───────────────────┘      └──────────────┬───────────────────┘
+               │                                         │
+               └──────────── rede interna do cluster ────┘
+                           (K3s pod network / flannel)
 ```
 
-## Como executar
+| Serviço    | Tipo K8s     | Réplicas | VM   | nodeSelector  |
+|------------|-------------|----------|------|---------------|
+| PostgreSQL | StatefulSet | 1        | VM1  | `tier: data`  |
+| Loki       | Deployment  | 1        | VM1  | `tier: data`  |
+| NGINX      | Deployment  | 2        | VM2  | `tier: app`   |
+| FastAPI    | Deployment  | 2        | VM2  | `tier: app`   |
 
-### Pré-requisitos
+## Estrutura do Projeto
 
-- [Docker](https://docs.docker.com/get-docker/) instalado
-- [Docker Compose](https://docs.docker.com/compose/install/) instalado
+```
+trabalho-docker-servicos-redes/
+├── README.md                       # Esta documentação
+├── docker-compose.yml              # Compose original (Trabalho 01)
+├── .env                            # Variáveis de ambiente (dev local)
+├── backend/
+│   ├── Dockerfile                  # Imagem do backend
+│   ├── requirements.txt            # Dependências Python (inclui httpx)
+│   └── app/
+│       ├── __init__.py
+│       ├── main.py                 # Aplicação FastAPI + middleware de logs
+│       ├── database.py             # Conexão com PostgreSQL + suporte a Secret
+│       ├── models.py               # Modelos SQLAlchemy
+│       ├── logger.py               # ← NOVO: cliente HTTP para envio de logs ao Loki
+│       ├── schemas/
+│       │   ├── __init__.py
+│       │   └── schemas.py
+│       └── routes/
+│           ├── __init__.py
+│           ├── categorias.py
+│           └── produtos.py
+├── nginx/
+│   ├── nginx.conf                  # Configuração do proxy reverso
+│   └── html/
+│       ├── index.html
+│       ├── style.css
+│       └── script.js
+├── loki/
+│   └── loki-config.yaml            # ← NOVO: configuração do Grafana Loki
+└── k8s/                            # ← NOVO: manifests Kubernetes
+    ├── deploy.sh                   # Script de deploy automatizado
+    ├── namespace.yaml
+    ├── secret-postgres.yaml
+    ├── configmap-nginx.yaml
+    ├── configmap-loki.yaml
+    ├── pvc-postgres.yaml
+    ├── pvc-loki.yaml
+    ├── statefulset-postgres.yaml
+    ├── service-postgres.yaml
+    ├── deployment-loki.yaml
+    ├── service-loki.yaml
+    ├── deployment-fastapi.yaml
+    ├── service-fastapi.yaml
+    ├── deployment-nginx.yaml
+    └── service-nginx.yaml
+```
 
-### Subir a aplicação
+## Pré-requisitos
+
+- 2 VMs com Linux (Ubuntu 22.04+ recomendado)
+- As VMs devem estar na mesma rede local ou VPN
+- Docker instalado em ambas as VMs (para build da imagem do backend)
+- Acesso SSH às duas VMs
+
+## Instruções de Deploy
+
+### 1. Provisionar as VMs
+
+Crie 2 VMs usando VirtualBox, QEMU/KVM, Vagrant ou cloud (Oracle Free Tier, etc.):
+
+| VM  | Papel          | Requisitos mínimos     |
+|-----|----------------|------------------------|
+| VM1 | Agent (worker) | 2 vCPU, 2GB RAM, 20GB  |
+| VM2 | Server (ctrl)  | 2 vCPU, 2GB RAM, 20GB  |
+
+Certifique-se de que ambas estejam na mesma rede e possam se comunicar via IP.
+
+### 2. Instalar K3s
+
+**Na VM2 (Server / Control Plane):**
 
 ```bash
-docker compose up --build
+# Instalar K3s como server
+curl -sfL https://get.k3s.io | sh -
+
+# Obter o token para adicionar o agent
+sudo cat /var/lib/rancher/k3s/server/node-token
 ```
 
-### Acessar
+**Na VM1 (Agent / Worker):**
+
+```bash
+# Instalar K3s como agent (substituir IP e TOKEN)
+curl -sfL https://get.k3s.io | K3S_URL=https://<IP-VM2>:6443 K3S_TOKEN=<TOKEN> sh -
+```
+
+**Verificar o cluster (na VM2):**
+
+```bash
+sudo kubectl get nodes
+# Deve mostrar ambos os nós como "Ready"
+```
+
+### 3. Rotular os Nós
+
+```bash
+# Na VM2, rotular os nós para separação de camadas
+# Substituir <nome-vm1> e <nome-vm2> pelos nomes reais dos nós
+
+sudo kubectl label node <nome-vm1> tier=data
+sudo kubectl label node <nome-vm2> tier=app
+
+# Verificar os labels
+sudo kubectl get nodes --show-labels
+```
+
+### 4. Build e Distribuição da Imagem do Backend
+
+A imagem do FastAPI precisa estar disponível nos nós do cluster. Opções:
+
+**Opção A — Docker Hub (recomendado):**
+
+```bash
+# Na máquina de desenvolvimento, buildar e publicar
+cd backend/
+docker build -t seuusuario/catalogo-backend:latest .
+docker push seuusuario/catalogo-backend:latest
+```
+
+Depois, edite `k8s/deployment-fastapi.yaml` e altere a imagem:
+```yaml
+image: seuusuario/catalogo-backend:latest
+```
+
+**Opção B — Build local em cada nó:**
+
+```bash
+# Em cada VM, clonar o repo e buildar
+git clone <url-do-repo>
+cd trabalho-docker-servicos-redes/backend
+docker build -t catalogo-backend:latest .
+```
+
+### 5. Deploy da Aplicação
+
+```bash
+# Na VM2 (server), clonar o repositório e executar o deploy
+git clone <url-do-repo>
+cd trabalho-docker-servicos-redes
+
+# Executar o script de deploy
+sudo bash k8s/deploy.sh
+```
+
+Ou aplicar manualmente:
+
+```bash
+sudo kubectl apply -f k8s/namespace.yaml
+sudo kubectl apply -f k8s/secret-postgres.yaml
+sudo kubectl apply -f k8s/configmap-loki.yaml
+sudo kubectl apply -f k8s/configmap-nginx.yaml
+
+# Criar ConfigMap do frontend
+sudo kubectl create configmap nginx-html \
+  --from-file=nginx/html/index.html \
+  --from-file=nginx/html/style.css \
+  --from-file=nginx/html/script.js \
+  --namespace=catalogo \
+  --dry-run=client -o yaml | sudo kubectl apply -f -
+
+sudo kubectl apply -f k8s/pvc-postgres.yaml
+sudo kubectl apply -f k8s/pvc-loki.yaml
+sudo kubectl apply -f k8s/statefulset-postgres.yaml
+sudo kubectl apply -f k8s/service-postgres.yaml
+sudo kubectl apply -f k8s/deployment-loki.yaml
+sudo kubectl apply -f k8s/service-loki.yaml
+sudo kubectl apply -f k8s/deployment-fastapi.yaml
+sudo kubectl apply -f k8s/service-fastapi.yaml
+sudo kubectl apply -f k8s/deployment-nginx.yaml
+sudo kubectl apply -f k8s/service-nginx.yaml
+```
+
+## Verificação do Estado dos Serviços
+
+```bash
+# Ver todos os pods e em qual nó estão rodando
+sudo kubectl get pods -n catalogo -o wide
+
+# Ver todos os services
+sudo kubectl get services -n catalogo
+
+# Verificar os logs de um pod específico
+sudo kubectl logs -n catalogo deployment/fastapi
+
+# Descrever um pod com problema
+sudo kubectl describe pod -n catalogo <nome-do-pod>
+
+# Verificar se o PostgreSQL está pronto
+sudo kubectl get statefulset -n catalogo
+
+# Verificar as réplicas do FastAPI e NGINX
+sudo kubectl get deployments -n catalogo
+```
+
+## Acessar a Aplicação
 
 | URL | Descrição |
 |-----|-----------|
-| <http://localhost> | Frontend (interface web) |
-| <https://localhost> | Frontend via HTTPS (certificado autoassinado) |
-| <http://localhost/api/docs> | Documentação interativa da API (Swagger) |
-| <http://localhost/api/redoc> | Documentação alternativa da API (ReDoc) |
+| `http://<IP-VM2>:30080` | Frontend (interface web) |
+| `https://<IP-VM2>:30443` | Frontend via HTTPS (certificado autoassinado) |
+| `http://<IP-VM2>:30080/api/docs` | Documentação interativa da API (Swagger) |
 
-### Parar a aplicação
+## Consultar Logs no Loki
+
+O Loki roda internamente no cluster. Para acessá-lo, use `port-forward`:
 
 ```bash
-docker compose down
+# Criar um túnel para o Loki (executar na VM2)
+sudo kubectl port-forward svc/loki 3100:3100 -n catalogo &
 ```
 
-### Parar e remover volumes (limpar dados)
+### Listar todos os labels disponíveis
 
 ```bash
-docker compose down -v
+curl http://localhost:3100/loki/api/v1/labels
+```
+
+### Consultar logs do FastAPI dos últimos 10 minutos
+
+```bash
+curl -G 'http://localhost:3100/loki/api/v1/query_range' \
+  --data-urlencode 'query={service="fastapi"}' \
+  --data-urlencode 'start='"$(date -d '10 minutes ago' +%s000000000)"'' \
+  --data-urlencode 'end='"$(date +%s000000000)"''
+```
+
+### Consultar apenas logs de erro
+
+```bash
+curl -G 'http://localhost:3100/loki/api/v1/query_range' \
+  --data-urlencode 'query={service="fastapi", level="error"}' \
+  --data-urlencode 'start='"$(date -d '1 hour ago' +%s000000000)"'' \
+  --data-urlencode 'end='"$(date +%s000000000)"''
+```
+
+### Consultar logs de inicialização
+
+```bash
+curl -G 'http://localhost:3100/loki/api/v1/query_range' \
+  --data-urlencode 'query={service="fastapi", event="startup"}' \
+  --data-urlencode 'start='"$(date -d '1 hour ago' +%s000000000)"'' \
+  --data-urlencode 'end='"$(date +%s000000000)"''
+```
+
+## Demonstrar Isolamento de Rede
+
+Para provar que PostgreSQL, Loki e FastAPI **não** estão acessíveis externamente:
+
+```bash
+# De uma máquina FORA do cluster, tentar acessar:
+
+# PostgreSQL — deve falhar (timeout/connection refused)
+nc -zv <IP-VM1> 5432
+
+# Loki — deve falhar
+curl http://<IP-VM1>:3100/ready
+
+# FastAPI — deve falhar
+curl http://<IP-VM2>:8080/health
+
+# NGINX — deve funcionar (é o único ponto de entrada)
+curl http://<IP-VM2>:30080/
 ```
 
 ## Rotas da API
@@ -115,88 +344,30 @@ docker compose down -v
 
 ## Exemplos de uso com cURL
 
-### Criar uma categoria
-
 ```bash
-curl -X POST http://localhost/api/categorias/ \
+# Criar uma categoria
+curl -X POST http://<IP-VM2>:30080/api/categorias/ \
   -H "Content-Type: application/json" \
   -d '{"nome": "Eletrônicos", "descricao": "Dispositivos eletrônicos e gadgets"}'
-```
 
-### Criar um produto
-
-```bash
-curl -X POST http://localhost/api/produtos/ \
+# Criar um produto
+curl -X POST http://<IP-VM2>:30080/api/produtos/ \
   -H "Content-Type: application/json" \
   -d '{"nome": "Smartphone XYZ", "descricao": "Smartphone top de linha", "preco": 2999.90, "estoque": 50, "categoria_id": 1}'
-```
 
-### Listar produtos
-
-```bash
-curl http://localhost/api/produtos/
-```
-
-### Atualizar um produto
-
-```bash
-curl -X PUT http://localhost/api/produtos/1 \
-  -H "Content-Type: application/json" \
-  -d '{"preco": 2499.90, "estoque": 45}'
-```
-
-### Deletar um produto
-
-```bash
-curl -X DELETE http://localhost/api/produtos/1
-```
-
-## Estrutura do Projeto
-
-```
-trabalho-docker-servicos-redes/
-├── docker-compose.yml          # Orquestração dos serviços
-├── .env                        # Variáveis de ambiente
-├── README.md                   # Documentação
-├── backend/
-│   ├── Dockerfile              # Imagem do backend
-│   ├── requirements.txt        # Dependências Python
-│   └── app/
-│       ├── __init__.py
-│       ├── main.py             # Aplicação FastAPI
-│       ├── database.py         # Conexão com PostgreSQL
-│       ├── models.py           # Modelos SQLAlchemy
-│       ├── schemas/
-│       │   ├── __init__.py
-│       │   └── schemas.py      # Schemas Pydantic
-│       └── routes/
-│           ├── __init__.py
-│           ├── categorias.py   # Rotas CRUD de categorias
-│           └── produtos.py     # Rotas CRUD de produtos
-└── nginx/
-    ├── nginx.conf              # Configuração do proxy reverso
-    └── html/
-        ├── index.html          # Frontend - estrutura HTML
-        ├── style.css           # Frontend - estilos
-        └── script.js           # Frontend - lógica JavaScript
+# Listar produtos
+curl http://<IP-VM2>:30080/api/produtos/
 ```
 
 ## Tecnologias Utilizadas
 
 - **Python 3.11** + **FastAPI** — Backend REST API
-- **PostgreSQL 16** — Banco de dados relacional
+- **PostgreSQL 17** — Banco de dados relacional
 - **NGINX** — Proxy reverso e servidor de arquivos estáticos
-- **Docker** + **Docker Compose** — Containerização e orquestração
+- **Grafana Loki 3.0.0** — Coleta centralizada de logs
+- **K3s** — Orquestrador de containers (Kubernetes leve)
+- **Docker** — Containerização
 - **SQLAlchemy** — ORM para Python
 - **Pydantic** — Validação de dados
+- **httpx** — Cliente HTTP para envio de logs
 - **HTML/CSS/JavaScript** — Frontend estático
-
-## Diferenciais Implementados
-
-- ✅ HTTPS com certificado autoassinado
-- ✅ Healthcheck no container do PostgreSQL
-- ✅ Documentação automática da API (Swagger/ReDoc)
-- ✅ Arquivo `.env` para configurações
-- ✅ Frontend moderno com dark mode
-- ✅ Filtro de produtos por categoria
-- ✅ Tratamento de erros com mensagens amigáveis
