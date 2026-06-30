@@ -102,101 +102,122 @@ trabalho-docker-servicos-redes/
     └── service-nginx.yaml
 ```
 
-## Pré-requisitos
+## Configuração do Ambiente Local (.env e Secrets)
 
-- 2 VMs com Linux (Ubuntu 22.04+ recomendado)
-- As VMs devem estar na mesma rede local ou VPN
-- Docker instalado em ambas as VMs (para build da imagem do backend)
-- Acesso SSH às duas VMs
+### 1. Arquivo `.env` (Desenvolvimento Local)
+Antes de rodar o projeto localmente, certifique-se de que possui o arquivo [.env](file:///c:/Users/marcos/trabalho-docker-servicos-redes/.env) na raiz do projeto configurado da seguinte forma:
 
-## Instruções de Deploy
-
-### 1. Provisionar as VMs
-
-Crie 2 VMs usando VirtualBox, QEMU/KVM, Vagrant ou cloud (Oracle Free Tier, etc.):
-
-| VM  | Papel          | Requisitos mínimos     |
-|-----|----------------|------------------------|
-| VM1 | Agent (worker) | 2 vCPU, 2GB RAM, 20GB  |
-| VM2 | Server (ctrl)  | 2 vCPU, 2GB RAM, 20GB  |
-
-Certifique-se de que ambas estejam na mesma rede e possam se comunicar via IP.
-
-### 2. Instalar K3s
-
-**Na VM2 (Server / Control Plane):**
-
-```bash
-# Instalar K3s como server
-curl -sfL https://get.k3s.io | sh -
-
-# Obter o token para adicionar o agent
-sudo cat /var/lib/rancher/k3s/server/node-token
+```env
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=[SEU NÚMERO DE MATRÍCULA]
+POSTGRES_DB=catalogo_db
+POSTGRES_HOST=postgres
+POSTGRES_PORT=5432
 ```
 
-**Na VM1 (Agent / Worker):**
+### 2. Kubernetes Secret (`secret-postgres.yaml`)
+No Kubernetes, as credenciais confidenciais do banco de dados ficam salvas no arquivo [k8s/secret-postgres.yaml](file:///c:/Users/marcos/trabalho-docker-servicos-redes/k8s/secret-postgres.yaml), codificadas em Base64. 
 
+Para codificar o seu número de matrícula no terminal (Linux, macOS ou WSL), execute:
 ```bash
-# Instalar K3s como agent (substituir IP e TOKEN)
-curl -sfL https://get.k3s.io | K3S_URL=https://<IP-VM2>:6443 K3S_TOKEN=<TOKEN> sh -
+echo -n 'SUA_MATRICULA' | base64
+```
+Substitua o valor resultante no campo `POSTGRES_PASSWORD` do arquivo [k8s/secret-postgres.yaml](file:///c:/Users/marcos/trabalho-docker-servicos-redes/k8s/secret-postgres.yaml).
+
+---
+
+## Pré-requisitos para o Cluster Kubernetes (VMs via Vagrant)
+
+Para simular o ambiente com duas VMs Linux distintas comunicando-se em rede local no Windows de forma totalmente offline e compatível com redes restritivas (como a eduroam da faculdade), utilizaremos **Vagrant** integrado ao hypervisor **Oracle VirtualBox**.
+
+1. **Instalar o Oracle VirtualBox**:
+   Abra o PowerShell como Administrador e execute:
+   ```powershell
+   winget install Oracle.VirtualBox
+   ```
+   *Após concluir a instalação, **reinicie o computador** para carregar os novos drivers de rede do VirtualBox.*
+
+2. **Instalar o Vagrant**:
+   No PowerShell do Windows:
+   ```powershell
+   winget install HashiCorp.Vagrant
+   ```
+   *Se o comando `vagrant` não for reconhecido após a instalação, reinicie o seu terminal ou execute `$env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")`.*
+
+---
+
+## Instruções de Deploy com Vagrant
+
+Siga os passos abaixo usando o terminal do Windows (PowerShell):
+
+### Passo 1: Construir a Imagem do Backend (Docker Hub)
+No Kubernetes, o cluster precisa baixar a imagem do backend de algum repositório. O arquivo [k8s/deployment-fastapi.yaml](file:///c:/Users/marcos/trabalho-docker-servicos-redes/k8s/deployment-fastapi.yaml) está configurado para puxar a imagem `marcosrb/catalogo-backend:latest`.
+
+Antes de rodar o cluster, faça o build da imagem na máquina host:
+```powershell
+cd backend
+docker build -t marcosrb/catalogo-backend:latest .
 ```
 
-**Verificar o cluster (na VM2):**
-
-```bash
-sudo kubectl get nodes
-# Deve mostrar ambos os nós como "Ready"
+### Passo 2: Criar as Duas VMs no Vagrant
+No PowerShell do Windows na pasta raiz do projeto, crie e inicialize as duas máquinas virtuais configuradas no `Vagrantfile`:
+```powershell
+vagrant up
 ```
+Esse comando criará automaticamente:
+- `vm1-dados` com IP estático `192.168.56.11`
+- `vm2-app` com IP estático `192.168.56.12` e a pasta do projeto compartilhada em `/home/ubuntu/trabalho`.
 
-### 3. Rotular os Nós
+### Passo 3: Instalar o K3s e Configurar o Cluster
 
+1. **Na VM2 (Server - Control Plane)**:
+   Acesse a máquina virtual:
+   ```powershell
+   vagrant ssh vm2-app
+   ```
+   Instale o K3s como servidor principal especificando a interface Host-Only:
+   ```bash
+   curl -sfL https://get.k3s.io | sh -s - server --node-ip=192.168.56.12 --flannel-iface=enp0s8 --advertise-address=192.168.56.12
+   ```
+   Exiba e copie o token gerado para conectar o outro nó:
+   ```bash
+   sudo cat /var/lib/rancher/k3s/server/node-token
+   ```
+   *Copie o token da tela.* Saia da máquina:
+   ```bash
+   exit
+   ```
+
+2. **Na VM1 (Agent - Worker/Dados)**:
+   Acesse a máquina virtual:
+   ```powershell
+   vagrant ssh vm1-dados
+   ```
+   Instale o K3s como agent apontando para a VM2 e especificando a interface Host-Only (Substitua `<TOKEN>` pelo token copiado no passo anterior):
+   ```bash
+   curl -sfL https://get.k3s.io | sh -s - agent --server https://192.168.56.12:6443 --token <TOKEN> --node-ip=192.168.56.11 --flannel-iface=enp0s8
+   ```
+   Saia da máquina:
+   ```bash
+   exit
+   ```
+
+### Passo 4: Rotular (Label) os Nós
+Como o banco de dados deve ir para a `vm1-dados` e a aplicação para a `vm2-app`, precisamos identificá-las no cluster.
+1. Acesse a `vm2-app`:
+   ```powershell
+   vagrant ssh vm2-app
+   ```
+2. Rode os comandos para adicionar as etiquetas (*labels*) exigidas no projeto:
+   ```bash
+   sudo kubectl label node vm1-dados tier=data
+   sudo kubectl label node vm2-app tier=app
+   ```
+
+### Passo 5: Executar o Deploy
+No terminal da `vm2-app` (`vagrant ssh vm2-app`), execute o script de deploy:
 ```bash
-# Na VM2, rotular os nós para separação de camadas
-# Substituir <nome-vm1> e <nome-vm2> pelos nomes reais dos nós
-
-sudo kubectl label node <nome-vm1> tier=data
-sudo kubectl label node <nome-vm2> tier=app
-
-# Verificar os labels
-sudo kubectl get nodes --show-labels
-```
-
-### 4. Build e Distribuição da Imagem do Backend
-
-A imagem do FastAPI precisa estar disponível nos nós do cluster. Opções:
-
-**Opção A — Docker Hub (recomendado):**
-
-```bash
-# Na máquina de desenvolvimento, buildar e publicar
-cd backend/
-docker build -t seuusuario/catalogo-backend:latest .
-docker push seuusuario/catalogo-backend:latest
-```
-
-Depois, edite `k8s/deployment-fastapi.yaml` e altere a imagem:
-```yaml
-image: seuusuario/catalogo-backend:latest
-```
-
-**Opção B — Build local em cada nó:**
-
-```bash
-# Em cada VM, clonar o repo e buildar
-git clone <url-do-repo>
-cd trabalho-docker-servicos-redes/backend
-docker build -t catalogo-backend:latest .
-```
-
-### 5. Deploy da Aplicação
-
-```bash
-# Na VM2 (server), clonar o repositório e executar o deploy
-git clone <url-do-repo>
-cd trabalho-docker-servicos-redes
-
-# Executar o script de deploy
-sudo bash k8s/deploy.sh
+sudo bash /home/ubuntu/trabalho/k8s/deploy.sh
 ```
 
 Ou aplicar manualmente:
@@ -253,9 +274,9 @@ sudo kubectl get deployments -n catalogo
 
 | URL | Descrição |
 |-----|-----------|
-| `http://<IP-VM2>:30080` | Frontend (interface web) |
-| `https://<IP-VM2>:30443` | Frontend via HTTPS (certificado autoassinado) |
-| `http://<IP-VM2>:30080/api/docs` | Documentação interativa da API (Swagger) |
+| `http://<IP_DA_VM2>:30080` | Frontend (interface web) |
+| `https://<IP_DA_VM2>:30443` | Frontend via HTTPS (certificado autoassinado) |
+| `http://<IP_DA_VM2>:30080/api/docs` | Documentação interativa da API (Swagger) |
 
 ## Consultar Logs no Loki
 
@@ -307,16 +328,16 @@ Para provar que PostgreSQL, Loki e FastAPI **não** estão acessíveis extername
 # De uma máquina FORA do cluster, tentar acessar:
 
 # PostgreSQL — deve falhar (timeout/connection refused)
-nc -zv <IP-VM1> 5432
+nc -zv <IP_DA_VM1> 5432
 
 # Loki — deve falhar
-curl http://<IP-VM1>:3100/ready
+curl http://<IP_DA_VM1>:3100/ready
 
 # FastAPI — deve falhar
-curl http://<IP-VM2>:8080/health
+curl http://<IP_DA_VM2>:8080/health
 
 # NGINX — deve funcionar (é o único ponto de entrada)
-curl http://<IP-VM2>:30080/
+curl http://<IP_DA_VM2>:30080/
 ```
 
 ## Rotas da API
@@ -346,17 +367,17 @@ curl http://<IP-VM2>:30080/
 
 ```bash
 # Criar uma categoria
-curl -X POST http://<IP-VM2>:30080/api/categorias/ \
+curl -X POST http://<IP_DA_VM2>:30080/api/categorias/ \
   -H "Content-Type: application/json" \
   -d '{"nome": "Eletrônicos", "descricao": "Dispositivos eletrônicos e gadgets"}'
 
 # Criar um produto
-curl -X POST http://<IP-VM2>:30080/api/produtos/ \
+curl -X POST http://<IP_DA_VM2>:30080/api/produtos/ \
   -H "Content-Type: application/json" \
   -d '{"nome": "Smartphone XYZ", "descricao": "Smartphone top de linha", "preco": 2999.90, "estoque": 50, "categoria_id": 1}'
 
 # Listar produtos
-curl http://<IP-VM2>:30080/api/produtos/
+curl http://<IP_DA_VM2>:30080/api/produtos/
 ```
 
 ## Tecnologias Utilizadas
