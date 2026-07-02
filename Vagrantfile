@@ -12,6 +12,11 @@ Vagrant.configure("2") do |config|
       vb.name = "vm1-dados"
       vb.memory = "2048"
       vb.cpus = 2
+      # Evitar travamento do e1000 no VirtualBox 7+ com Hyper-V ativo no Windows
+      vb.customize ["modifyvm", :id, "--nictype1", "virtio"]
+      vb.customize ["modifyvm", :id, "--nictype2", "virtio"]
+      # Ignorar falhas de MSR na coexistência do VirtualBox com Hyper-V/WSL2 e CPUs híbridas Intel
+      vb.customize ["setextradata", :id, "VBoxInternal/CPUM/Msrs/IgnoreUndef", "1"]
     end
   end
 
@@ -32,6 +37,11 @@ Vagrant.configure("2") do |config|
       vb.name = "vm2-app"
       vb.memory = "2048"
       vb.cpus = 2
+      # Evitar travamento do e1000 no VirtualBox 7+ com Hyper-V ativo no Windows
+      vb.customize ["modifyvm", :id, "--nictype1", "virtio"]
+      vb.customize ["modifyvm", :id, "--nictype2", "virtio"]
+      # Ignorar falhas de MSR na coexistência do VirtualBox com Hyper-V/WSL2 e CPUs híbridas Intel
+      vb.customize ["setextradata", :id, "VBoxInternal/CPUM/Msrs/IgnoreUndef", "1"]
     end
   end
 end
