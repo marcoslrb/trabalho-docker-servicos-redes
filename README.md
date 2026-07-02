@@ -150,14 +150,16 @@ Para simular o ambiente com duas VMs Linux distintas comunicando-se em rede loca
 
 Siga os passos abaixo usando o terminal do Windows (PowerShell):
 
-### Passo 1: Construir a Imagem do Backend (Docker Hub)
+### Passo 1: Obter a Imagem do Backend (Docker Hub)
 No Kubernetes, o cluster precisa baixar a imagem do backend de algum repositório. O arquivo [k8s/deployment-fastapi.yaml](file:///c:/Users/marcos/trabalho-docker-servicos-redes/k8s/deployment-fastapi.yaml) está configurado para puxar a imagem `marcosrb/catalogo-backend:latest`.
 
-Antes de rodar o cluster, faça o build da imagem na máquina host:
-```powershell
-cd backend
-docker build -t marcosrb/catalogo-backend:latest .
-```
+- **Se você não fez alterações locais no backend:** Não é necessário executar este passo. O cluster K3s irá baixar automaticamente a imagem que já está publicada no seu Docker Hub.
+- **Se você realizou alterações locais no backend:** Para que o cluster receba as suas modificações, você precisará gerar uma nova imagem e enviá-la para o Docker Hub:
+  ```powershell
+  cd backend
+  docker build -t marcosrb/catalogo-backend:latest .
+  docker push marcosrb/catalogo-backend:latest
+  ```
 
 ### Passo 2: Criar as Duas VMs no Vagrant
 No PowerShell do Windows na pasta raiz do projeto, crie e inicialize as duas máquinas virtuais configuradas no `Vagrantfile`:
@@ -220,9 +222,10 @@ No terminal da `vm2-app` (`vagrant ssh vm2-app`), execute o script de deploy:
 sudo bash /home/ubuntu/trabalho/k8s/deploy.sh
 ```
 
-Ou aplicar manualmente:
+Ou aplicar manualmente (certifique-se de navegar para a pasta do projeto primeiro):
 
 ```bash
+cd /home/ubuntu/trabalho
 sudo kubectl apply -f k8s/namespace.yaml
 sudo kubectl apply -f k8s/secret-postgres.yaml
 sudo kubectl apply -f k8s/configmap-loki.yaml
@@ -327,16 +330,16 @@ Para provar que PostgreSQL, Loki e FastAPI **não** estão acessíveis extername
 ```bash
 # De uma máquina FORA do cluster, tentar acessar:
 
-# PostgreSQL — deve falhar (timeout/connection refused)
+# PostgreSQL — deve falhar (timeout/connection refused, pois o service é ClusterIP e sem IP público)
 nc -zv <IP_DA_VM1> 5432
 
-# Loki — deve falhar
+# Loki — deve falhar (não há porta exposta externamente, o service é ClusterIP)
 curl http://<IP_DA_VM1>:3100/ready
 
-# FastAPI — deve falhar
+# FastAPI — deve falhar (não há porta exposta externamente, o service é ClusterIP)
 curl http://<IP_DA_VM2>:8080/health
 
-# NGINX — deve funcionar (é o único ponto de entrada)
+# NGINX — deve funcionar (é o único ponto de entrada exposto via NodePort nas portas 30080/30443 da VM2)
 curl http://<IP_DA_VM2>:30080/
 ```
 

@@ -5,10 +5,17 @@
 # Este script deve ser executado na VM2 (control plane / server)
 # após o K3s estar instalado e ambas as VMs no cluster.
 #
-# Uso: bash k8s/deploy.sh
+# Uso: sudo bash k8s/deploy.sh
 # ============================================================
 
 set -e
+
+# Garantir que o script seja executado como root (com sudo)
+if [ "$EUID" -ne 0 ]; then
+  echo "Erro: Este script precisa ser executado como root (com sudo)."
+  echo "Uso: sudo bash k8s/deploy.sh"
+  exit 1
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
