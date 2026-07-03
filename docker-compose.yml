@@ -130,6 +130,13 @@ services:
       # e o backend consegue acessar "postgres:5432".
       - netatividade01
 
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
   # --------------------------------------------
   # Serviço 3: NGINX
   # --------------------------------------------

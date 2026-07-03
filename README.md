@@ -395,3 +395,9 @@ curl http://<IP_DA_VM2>:30080/api/produtos/
 - **Pydantic** — Validação de dados
 - **httpx** — Cliente HTTP para envio de logs
 - **HTML/CSS/JavaScript** — Frontend estático
+
+## Desafios Extras Implementados
+
+- **Healthcheck para o FastAPI com auto-recovery (reinício automático)**:
+  - **Kubernetes (K3s)**: Configurado em [deployment-fastapi.yaml](file:///c:/Users/marcos/trabalho-docker-servicos-redes/k8s/deployment-fastapi.yaml#L52-L63) usando `livenessProbe` e `readinessProbe` na rota `/health`. Se o container falhar ou parar de responder por qualquer motivo, o K3s reinicia o Pod automaticamente.
+  - **Docker Compose**: Adicionada a seção `healthcheck` em [docker-compose.yml](file:///c:/Users/marcos/trabalho-docker-servicos-redes/docker-compose.yml) utilizando uma chamada nativa do Python para testar o status da API.

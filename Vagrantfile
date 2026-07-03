@@ -2,7 +2,7 @@ Vagrant.configure("2") do |config|
   # Usar a imagem oficial do Ubuntu Server 22.04 LTS (Jammy Jellyfish)
   config.vm.box = "ubuntu/jammy64"
   
-  # Aumentar o timeout de boot para compensar a lentidão do modo de compatibilidade (NEM/Hyper-V)
+  # Aumentar o timeout de boot para compensar a lentidão do modo de compatibilidade (NEM/Hyper-V) em 10 minutos
   config.vm.boot_timeout = 600
 
   # VM1 - Camada de Dados (Worker)
