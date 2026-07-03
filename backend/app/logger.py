@@ -1,3 +1,7 @@
+import os
+import time
+import httpx
+
 """
 Cliente HTTP para envio de logs ao Grafana Loki.
 Envia logs estruturados via Loki Push API (POST /loki/api/v1/push).
@@ -7,10 +11,6 @@ Eventos obrigatórios:
   - Cada requisição recebida (método HTTP, rota, código de resposta)
   - Erros de conexão com o PostgreSQL
 """
-import os
-import time
-import httpx
-
 
 # URL do Loki — configurável via variável de ambiente.
 # No cluster K8s, o Service se chama "loki" no namespace "catalogo".
